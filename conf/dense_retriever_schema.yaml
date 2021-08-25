@@ -1,0 +1,112 @@
+defaults:
+  type: list
+
+indexers:
+  type: dict
+  schema: 
+    flat:
+      schema:
+        _target_: 
+          type: string
+
+    hnsw:
+      schema:
+        _target_: 
+          type: string
+
+    hnsw_sq:
+      schema:
+        _target_:
+          type: string
+
+qa_dataset:
+  type: string
+
+ctx_datatsets:
+  type: list
+  valuesrules:
+    type: string
+
+encoded_ctx_files:
+  type: list
+  valuesrules:
+    type: string
+
+out_file:
+  type: path
+  check_with: "parent_exists"
+  coerce: path
+
+match: 
+  allowed: ["regex", "string"]
+n_docs: 
+  type: integer
+validation_workers: 
+  type: integer
+
+batch_size: 
+  type: integer
+
+do_lower_case:
+  type: boolean
+
+encoder_path:
+  nullable: True
+  type: path 
+  check_with: exists
+  coerce: path
+
+index_path:
+  nullable: True
+  type: path
+  check_with: exists
+  coerce: path
+
+kilt_out_file:
+  nullable: True
+  type: path
+  coerce: path
+
+model_file:
+  type: path
+  check_with: exists
+  coerce: path
+
+validate_as_tables:
+  type: boolean
+
+rpc_retriever_cfg_file:
+  nullable: True
+  type: string
+
+indexer:  
+  type: string
+
+special_tokens:
+  nullable: True
+  type: list
+  valuesrules:
+      type: string 
+
+local_rank: 
+  type: integer
+global_loss_buf_sz: 
+  type: integer
+
+device:
+  nullable: True
+
+distributed_world_size:
+  nullable: True
+  type: integer
+
+no_cuda: 
+  type: integer
+n_gpu:
+  nullable: True
+  type: integer
+fp16: 
+  type: boolean
+
+fp16_opt_level:
+  type: string
