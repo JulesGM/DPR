@@ -14,19 +14,19 @@ indexers:
     _target_: dpr.indexer.faiss_indexers.DenseHNSWSQIndexer
 
 # the name of the queries dataset from the 'datasets' config group
-qa_dataset:
+qa_dataset: nq_test
 
 # a list of names of the passages datasets from the 'ctx_sources' config group
-ctx_datatsets:
+ctx_datatsets: [dpr_wiki]
 
 #Glob paths to encoded passages (from generate_dense_embeddings tool)
 encoded_ctx_files: []
 
-out_file:
+out_file: /home/mila/g/gagnonju/DPR/jules_output/nq_test.txt
 # "regex" or "string"
 match: string
 n_docs: 100
-validation_workers: 16
+validation_workers: 15
 
 # Batch size to generate query embeddings
 batch_size: 128
@@ -42,12 +42,12 @@ encoder_path:
 # (instead of using encoded_ctx_files)
 # it should point to either directory or a common index files prefix name
 # if there is no index at the specific location, the index will be created from encoded_ctx_files
-index_path:
+index_path: /home/mila/g/gagnonju/DPR/dpr/downloads/indexes/single/nq/full
 
 kilt_out_file:
 
 # A trained bi-encoder checkpoint file to initialize the model
-model_file:
+model_file: /home/mila/g/gagnonju/DPR/dpr/downloads/checkpoint/retriever/single/nq/bert-base-encoder.cp
 
 validate_as_tables: False
 rpc_retriever_cfg_file:

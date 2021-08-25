@@ -12,14 +12,17 @@
 import glob
 import json
 import logging
+import os
+from pathlib import Path
 import pickle
 import time
 from typing import List, Tuple, Dict, Iterator
 
 import hydra
 import numpy as np
-import torch
 from omegaconf import DictConfig, OmegaConf
+import rich
+import torch
 from torch import Tensor as T
 from torch import nn
 
@@ -285,6 +288,10 @@ def validate_tables(
 @hydra.main(config_path="conf", config_name="dense_retriever")
 def main(cfg: DictConfig):
     cfg = setup_cfg_gpu(cfg)
+
+    assert cfg.out_file, cfg.out_file
+    assert Path(cfg.out_file).parent.exists(), cfg.out_file
+
     logger.info("CFG (after gpu  configuration):")
     logger.info("%s", OmegaConf.to_yaml(cfg))
 
@@ -405,7 +412,9 @@ def main(cfg: DictConfig):
             retriever.index.serialize(index_path)
 
     # get top k results
+    print("get_top_docs: Starting.")
     top_ids_and_scores = retriever.get_top_docs(questions_tensor.numpy(), cfg.n_docs)
+    print("get_top_docs: Done.")
 
     # we no longer need the index
     retriever = None
