@@ -1,6 +1,13 @@
 defaults:
   type: list
 
+ctx_sources:
+  type: dict
+datasets:
+  type: dict
+encoder: 
+  type: dict
+
 indexers:
   type: dict
   schema: 

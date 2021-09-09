@@ -9,27 +9,40 @@
  Set of utilities for Q&A results validation tasks - Retriver passage validation and Reader predicted answer validation
 """
 
+###############################################################################
+# STDLib
+###############################################################################
 import collections
-import logging
-import string
-import unicodedata
-from multiprocessing import Pool as ProcessPool
-
-import regex as re
 from functools import partial
-from typing import Tuple, List, Dict
+import logging
+from multiprocessing import Pool as ProcessPool
+import regex as re
+import rich
+import string
 
+from typing import Tuple, List, Dict
+import unicodedata
+
+###############################################################################
+# Third party libraries
+###############################################################################
+import tqdm
+
+###############################################################################
+# First party libraries
+###############################################################################
 from dpr.data.retriever_data import TableChunk
 from dpr.utils.tokenizers import SimpleTokenizer
 
+
 logger = logging.getLogger(__name__)
-
 QAMatchStats = collections.namedtuple(
-    "QAMatchStats", ["top_k_hits", "questions_doc_hits"]
+    "QAMatchStats", 
+    ["top_k_hits", "questions_doc_hits"]
 )
-
 QATableMatchStats = collections.namedtuple(
-    "QAMatchStats", ["top_k_chunk_hits", "top_k_table_hits", "questions_doc_hits"]
+    "QAMatchStats", 
+    ["top_k_chunk_hits", "top_k_table_hits", "questions_doc_hits"]
 )
 
 
@@ -41,18 +54,27 @@ def calculate_matches(
     match_type: str,
 ) -> QAMatchStats:
     """
-    Evaluates answers presence in the set of documents. This function is supposed to be used with a large collection of
-    documents and results. It internally forks multiple sub-processes for evaluation and then merges results
-    :param all_docs: dictionary of the entire documents database. doc_id -> (doc_text, title)
+    Evaluates answers presence in the set of documents. This function 
+    is supposed to be used with a large collection of documents and results. 
+    It internally forks multiple sub-processes for evaluation and then 
+    merges results.
+    :param all_docs: dictionary of the entire documents database. 
+                     doc_id -> (doc_text, title)
     :param answers: list of answers's list. One list per question
-    :param closest_docs: document ids of the top results along with their scores
+    :param closest_docs: document ids of the top results along with their 
+                         scores
     :param workers_num: amount of parallel threads to process data
-    :param match_type: type of answer matching. Refer to has_answer code for available options
+    :param match_type: type of answer matching. Refer to has_answer 
+                       code for available options
     :return: matching information tuple.
-    top_k_hits - a list where the index is the amount of top documents retrieved and the value is the total amount of
+    
+    top_k_hits - a list where the index is the amount of top documents 
+    retrieved and the value is the total amount of
     valid matches across an entire dataset.
-    questions_doc_hits - more detailed info with answer matches for every question and every retrieved document
+    questions_doc_hits - more detailed info with answer matches for 
+    every question and every retrieved document
     """
+    PARALLELISM = True
     global dpr_all_documents
     dpr_all_documents = all_docs
     logger.info("dpr_all_documents size %d", len(dpr_all_documents))
@@ -60,17 +82,31 @@ def calculate_matches(
     tok_opts = {}
     tokenizer = SimpleTokenizer(**tok_opts)
 
-    processes = ProcessPool(processes=workers_num)
     logger.info("Matching answers in top docs...")
     get_score_partial = partial(
         check_answer, match_type=match_type, tokenizer=tokenizer
     )
 
+    print("NO PARALLELISM" * 1000)
     questions_answers_docs = zip(answers, closest_docs)
-    scores = processes.map(get_score_partial, questions_answers_docs)
+    rich.print("[red bold]REMEMBER TO RESTORE MULTIPROCESSING")
+    cosmetic_len = min(len(answers), len(closest_docs))
 
-    logger.info("Per question validation results len=%d", len(scores))
+    processes = None
+    if PARALLELISM:
+        processes = ProcessPool(processes=workers_num)
+        scores = processes.map(
+            get_score_partial, 
+            questions_answers_docs,
+        )
+    else:
+        scores = list(tqdm.tqdm(
+            map(get_score_partial, questions_answers_docs),
+            total=cosmetic_len
+        ))
 
+    logger.info("Per question validation results len=%d", cosmetic_len)
+    
     n_docs = len(closest_docs[0][0])
     top_k_hits = [0] * n_docs
     for question_hits in scores:
@@ -78,11 +114,20 @@ def calculate_matches(
         if best_hit is not None:
             top_k_hits[best_hit:] = [v + 1 for v in top_k_hits[best_hit:]]
 
+    if processes:
+        processes.close()
+        
     return QAMatchStats(top_k_hits, scores)
 
 
-def check_answer(questions_answers_docs, tokenizer, match_type) -> List[bool]:
-    """Search through all the top docs to see if they have any of the answers."""
+def check_answer(
+    questions_answers_docs, 
+    tokenizer, 
+    match_type
+) -> List[bool]:
+    """
+    Search through all the top docs to see if they have any of the answers.
+    """
     answers, (doc_ids, doc_scores) = questions_answers_docs
 
     global dpr_all_documents
@@ -101,12 +146,14 @@ def check_answer(questions_answers_docs, tokenizer, match_type) -> List[bool]:
         if has_answer(answers, text, tokenizer, match_type):
             answer_found = True
         hits.append(answer_found)
+
     return hits
 
 
 def has_answer(answers, text, tokenizer, match_type) -> bool:
     """Check if a document contains an answer string.
-    If `match_type` is string, token matching is done between the text and answer.
+    If `match_type` is string, token matching is done between the 
+    text and answer.
     If `match_type` is regex, we search the whole text with the regex.
     """
     text = _normalize(text)
@@ -130,13 +177,17 @@ def has_answer(answers, text, tokenizer, match_type) -> bool:
             single_answer = _normalize(single_answer)
             if regex_match(text, single_answer):
                 return True
+
     return False
 
 
 def regex_match(text, pattern):
     """Test if a regex pattern is contained within a text."""
     try:
-        pattern = re.compile(pattern, flags=re.IGNORECASE + re.UNICODE + re.MULTILINE)
+        pattern = re.compile(
+            pattern, 
+            flags=re.IGNORECASE + re.UNICODE + re.MULTILINE
+        )
     except BaseException:
         return False
     return pattern.search(text) is not None

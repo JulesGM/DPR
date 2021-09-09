@@ -4,15 +4,19 @@ import rich
 import yaml
 from pathlib import Path
 
+
+SCHEMA_PATH_DEFAULT = "conf/dense_retriever_schema.yaml"
+DATA_PATH_DEFAULT = "conf/dense_retriever.yaml"
+
+
 def load_file(path):
     with open(path) as fin:
         return fin.read()
 
+
 def load_yaml(path):
     return yaml.safe_load(load_file(path))
 
-SCHEMA_PATH_DEFAULT = "conf/dense_retriever_schema.yaml"
-DATA_PATH_DEFAULT = "conf/dense_retriever.yaml"
 
 class ValidatorWithPaths(cerberus.Validator):
     path_type = cerberus.TypeDefinition("path", (Path,), ())
@@ -47,20 +51,31 @@ class ValidatorWithPaths(cerberus.Validator):
         return Path(value)
 
 
-def main(schema_path=SCHEMA_PATH_DEFAULT, data_path=DATA_PATH_DEFAULT):
+def validate(arguments_dict, schema_path, verbose=True):
+    assert arguments_dict, "argument_dict"
+
     schema = load_yaml(schema_path)
-    data = load_yaml(data_path)
     validator = ValidatorWithPaths(schema)
 
-    output = validator.validate(data)
-    print(output)
+    output = validator.validate(arguments_dict)
 
     if not output:
+        print("Failed validation.")
         print("Errors:")
         rich.print(validator.errors)
         print("Value:")
-        rich.print(data)
+        rich.print(arguments_dict)
+        raise ValueError("Failed validation.")
+    else:
+        if verbose:
+            rich.print("[bold]Passed validation.")
+            rich.print(arguments_dict)
+
+
+def main(schema_path=SCHEMA_PATH_DEFAULT, data_path=DATA_PATH_DEFAULT):
+    data = load_yaml(data_path)
+    validate(data, schema_path)
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(main)

@@ -8,44 +8,83 @@
 """
  Command line tool to get dense results and validate them
 """
-
+###############################################################################
+# Standard imports
+###############################################################################
+import datetime
 import glob
 import json
 import logging
 import os
 from pathlib import Path
 import pickle
+import rich
 import time
 from typing import List, Tuple, Dict, Iterator
 
+
+###############################################################################
+# Third party imports
+###############################################################################
+import colored_traceback.auto
+import rich
 import hydra
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
-import rich
 import torch
 from torch import Tensor as T
 from torch import nn
 
+
+###############################################################################
+# Internal imports 
+###############################################################################
 from dpr.data.biencoder_data import RepTokenSelector
-from dpr.data.qa_validation import calculate_matches, calculate_chunked_matches
+from dpr.data.qa_validation import (
+    calculate_matches, 
+    calculate_chunked_matches,
+)
 from dpr.data.retriever_data import KiltCsvCtxSrc, TableChunk
 from dpr.indexer.faiss_indexers import (
     DenseIndexer,
 )
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, _select_span_with_token
-from dpr.options import setup_logger, setup_cfg_gpu, set_cfg_params_from_state
+from dpr.options import (
+    setup_logger, 
+    setup_cfg_gpu, 
+    set_cfg_params_from_state,
+)
 from dpr.utils.data_utils import Tensorizer
 from dpr.utils.model_utils import (
     setup_for_distributed_mode,
     get_model_obj,
     load_states_from_checkpoint,
 )
+import jules_validate_dense_retriever
 
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+SCHEMA_PATH = os.path.join(
+    SCRIPT_DIR, 
+    "conf/dense_retriever_schema.yaml",
+)
+
+
+##############################################################################
+# Logging
+##############################################################################
 logger = logging.getLogger()
 setup_logger(logger)
 
+def timestamp():
+    now = datetime.datetime.now()
+    return now.strftime("%A %d %B - %H:%M:%S")
 
+
+##############################################################################
+# Other Stuff
+##############################################################################
 def generate_question_vectors(
     question_encoder: torch.nn.Module,
     tensorizer: Tensorizer,
@@ -65,7 +104,9 @@ def generate_question_vectors(
                 # TODO: tmp workaround for EL, remove or revise
                 if query_token == "[START_ENT]":
                     batch_token_tensors = [
-                        _select_span_with_token(q, tensorizer, token_str=query_token)
+                        _select_span_with_token(
+                            q, tensorizer, token_str=query_token
+                        )
                         for q in batch_questions
                     ]
                 else:
@@ -83,7 +124,10 @@ def generate_question_vectors(
             q_attn_mask = tensorizer.get_attn_mask(q_ids_batch)
 
             if selector:
-                rep_positions = selector.get_positions(q_ids_batch, tensorizer)
+                rep_positions = selector.get_positions(
+                    q_ids_batch, 
+                    tensorizer,
+                )
 
                 _, out, _ = BiEncoder.get_representation(
                     question_encoder,
@@ -93,7 +137,9 @@ def generate_question_vectors(
                     representation_token_pos=rep_positions,
                 )
             else:
-                _, out, _ = question_encoder(q_ids_batch, q_seg_batch, q_attn_mask)
+                _, out, _ = question_encoder(
+                    q_ids_batch, q_seg_batch, q_attn_mask
+                )
 
             query_vectors.extend(out.cpu().split(1, dim=0))
 
@@ -106,9 +152,15 @@ def generate_question_vectors(
     return query_tensor
 
 
+##############################################################################
+# Retriever Stuff
+##############################################################################
 class DenseRetriever(object):
     def __init__(
-        self, question_encoder: nn.Module, batch_size: int, tensorizer: Tensorizer
+        self, 
+        question_encoder: nn.Module, 
+        batch_size: int, 
+        tensorizer: Tensorizer
     ):
         self.question_encoder = question_encoder
         self.batch_size = batch_size
@@ -133,7 +185,8 @@ class DenseRetriever(object):
 
 class LocalFaissRetriever(DenseRetriever):
     """
-    Does passage retrieving over the provided index and question encoder
+    Does passage retrieving over the provided index 
+    and question encoder
     """
 
     def __init__(
@@ -155,12 +208,16 @@ class LocalFaissRetriever(DenseRetriever):
         """
         Indexes encoded passages takes form a list of files
         :param vector_files: file names to get passages vectors from
-        :param buffer_size: size of a buffer (amount of passages) to send for the indexing at once
+        :param buffer_size: size of a buffer (amount of passages) 
+                            to send for the indexing at once
         :return:
         """
         buffer = []
         for i, item in enumerate(
-            iterate_encoded_files(vector_files, path_id_prefixes=path_id_prefixes)
+            iterate_encoded_files(
+                vector_files, 
+                path_id_prefixes=path_id_prefixes
+            )
         ):
             buffer.append(item)
             if 0 < buffer_size == len(buffer):
@@ -173,7 +230,8 @@ class LocalFaissRetriever(DenseRetriever):
         self, query_vectors: np.array, top_docs: int = 100
     ) -> List[Tuple[List[object], List[float]]]:
         """
-        Does the retrieval of the best matching passages given the query vectors batch
+        Does the retrieval of the best matching passages given 
+        the query vectors batch.
         :param query_vectors:
         :param top_docs:
         :return:
@@ -192,14 +250,21 @@ def validate(
     workers_num: int,
     match_type: str,
 ) -> List[List[bool]]:
+    
     match_stats = calculate_matches(
         passages, answers, result_ctx_ids, workers_num, match_type
     )
     top_k_hits = match_stats.top_k_hits
 
-    logger.info("Validation results: top k documents hits %s", top_k_hits)
+    logger.info(
+        "Validation results: top k documents hits %s", 
+        top_k_hits,
+    )
     top_k_hits = [v / len(result_ctx_ids) for v in top_k_hits]
-    logger.info("Validation results: top k documents hits accuracy %s", top_k_hits)
+    logger.info(
+        "Validation results: top k documents hits accuracy %s", 
+        top_k_hits,
+    )
     return match_stats.questions_doc_hits
 
 
@@ -211,7 +276,8 @@ def save_results(
     per_question_hits: List[List[bool]],
     out_file: str,
 ):
-    # join passages text with the result ids, their questions and assigning has|no answer labels
+    # join passages text with the result ids, their questions 
+    # and assigning has|no answer labels
     merged_data = []
     # assert len(per_question_hits) == len(questions) == len(answers)
     for i, q in enumerate(questions):
@@ -274,19 +340,40 @@ def validate_tables(
     top_k_chunk_hits = match_stats.top_k_chunk_hits
     top_k_table_hits = match_stats.top_k_table_hits
 
-    logger.info("Validation results: top k documents hits %s", top_k_chunk_hits)
+    logger.info(
+        "Validation results: top k documents hits %s", 
+        top_k_chunk_hits
+    )
     top_k_hits = [v / len(result_ctx_ids) for v in top_k_chunk_hits]
-    logger.info("Validation results: top k table chunk hits accuracy %s", top_k_hits)
+    logger.info(
+        "Validation results: top k table chunk hits accuracy %s", 
+        top_k_hits
+    )
 
-    logger.info("Validation results: top k tables hits %s", top_k_table_hits)
+    logger.info(
+        "Validation results: top k tables hits %s", 
+        top_k_table_hits,
+    )
     top_k_table_hits = [v / len(result_ctx_ids) for v in top_k_table_hits]
-    logger.info("Validation results: top k tables accuracy %s", top_k_table_hits)
+    logger.info(
+        "Validation results: top k tables accuracy %s", 
+        top_k_table_hits,
+    )
 
     return match_stats.top_k_chunk_hits
 
 
 @hydra.main(config_path="conf", config_name="dense_retriever")
 def main(cfg: DictConfig):
+    rich.print("[bold green]Starting dense_retriever.main")
+    
+    ###########################################################################
+    # Complete and validate CFG
+    ###########################################################################
+    jules_validate_dense_retriever.validate(
+        {k: getattr(cfg, k) for k in dir(cfg)}, 
+        SCHEMA_PATH,
+    )
     cfg = setup_cfg_gpu(cfg)
 
     assert cfg.out_file, cfg.out_file
@@ -295,6 +382,29 @@ def main(cfg: DictConfig):
     logger.info("CFG (after gpu  configuration):")
     logger.info("%s", OmegaConf.to_yaml(cfg))
 
+    ###########################################################################
+    # Prepare sources
+    ###########################################################################
+    rich.print("[red bold]Starting the thing.")
+    id_prefixes = []
+    ctx_sources = []
+    for ctx_src in cfg.ctx_datatsets:
+        ctx_src = hydra.utils.instantiate(cfg.ctx_sources[ctx_src])
+        id_prefixes.append(ctx_src.id_prefix)
+        ctx_sources.append(ctx_src)
+    
+    rich.print(ctx_sources)
+    rich.print("[red bold]Second part.")
+    all_passages = {}
+    for ctx_src in ctx_sources:
+        ctx_src.load_data_to(all_passages)
+        rich.print("[green]Done loading passages.")
+    print(len(all_passages))
+    
+
+    ###########################################################################
+    # Prepare models
+    ###########################################################################
     saved_state = load_states_from_checkpoint(cfg.model_file)
     set_cfg_params_from_state(saved_state.encoder_params, cfg)
 
@@ -311,7 +421,12 @@ def main(cfg: DictConfig):
         encoder = encoder.question_model
 
     encoder, _ = setup_for_distributed_mode(
-        encoder, None, cfg.device, cfg.n_gpu, cfg.local_rank, cfg.fp16
+        encoder, 
+        None, 
+        cfg.device, 
+        cfg.n_gpu, 
+        cfg.local_rank, 
+        cfg.fp16
     )
     encoder.eval()
 
@@ -319,7 +434,8 @@ def main(cfg: DictConfig):
     model_to_load = get_model_obj(encoder)
     logger.info("Loading saved model state ...")
 
-    encoder_prefix = (encoder_path if encoder_path else "question_model") + "."
+    encoder_prefix = (
+        encoder_path if encoder_path else "question_model") + "."
     prefix_len = len(encoder_prefix)
 
     logger.info("Encoder state prefix %s", encoder_prefix)
@@ -333,7 +449,9 @@ def main(cfg: DictConfig):
     vector_size = model_to_load.get_out_size()
     logger.info("Encoder vector_size=%d", vector_size)
 
-    # get questions & answers
+    ###########################################################################
+    # Prepare questions and answers
+    ###########################################################################
     questions = []
     question_answers = []
 
@@ -341,6 +459,7 @@ def main(cfg: DictConfig):
         logger.warning("Please specify qa_dataset to use")
         return
 
+    
     ds_key = cfg.qa_dataset
     logger.info("qa_dataset: %s", ds_key)
 
@@ -352,31 +471,33 @@ def main(cfg: DictConfig):
         questions.append(question)
         question_answers.append(answers)
 
+
+    ###########################################################################
+    # Load Index & Prepare retriever
+    ###########################################################################
+    #------------
+    ## Instantiate the index and create a retriever
+    #------------
     index = hydra.utils.instantiate(cfg.indexers[cfg.indexer])
     logger.info("Index class %s ", type(index))
     index_buffer_sz = index.buffer_size
     index.init_index(vector_size)
-    retriever = LocalFaissRetriever(encoder, cfg.batch_size, tensorizer, index)
-
-    logger.info("Using special token %s", qa_src.special_query_token)
-    questions_tensor = retriever.generate_question_vectors(
-        questions, query_token=qa_src.special_query_token
+    retriever = LocalFaissRetriever(
+        encoder, 
+        cfg.batch_size, 
+        tensorizer, 
+        index,
     )
 
     if qa_src.selector:
         logger.info("Using custom representation token selector")
         retriever.selector = qa_src.selector
 
-    id_prefixes = []
-    ctx_sources = []
-    for ctx_src in cfg.ctx_datatsets:
-        ctx_src = hydra.utils.instantiate(cfg.ctx_sources[ctx_src])
-        id_prefixes.append(ctx_src.id_prefix)
-        ctx_sources.append(ctx_src)
-
     logger.info("id_prefixes per dataset: %s", id_prefixes)
 
-    # index all passages
+    #------------
+    ## Index all passages
+    #------------
     ctx_files_patterns = cfg.encoded_ctx_files
     index_path = cfg.index_path
 
@@ -384,7 +505,10 @@ def main(cfg: DictConfig):
     if ctx_files_patterns:
         assert len(ctx_files_patterns) == len(
             id_prefixes
-        ), "ctx len={} pref leb={}".format(len(ctx_files_patterns), len(id_prefixes))
+        ), "ctx len={} pref leb={}".format(
+            len(ctx_files_patterns), 
+            len(id_prefixes),
+        )
     else:
         assert (
             index_path
@@ -400,34 +524,54 @@ def main(cfg: DictConfig):
 
     logger.info("Embeddings files id prefixes: %s", path_id_prefixes)
 
+    #------------
+    ## Deserialize an already existing index
+    #------------
     if index_path and index.index_exists(index_path):
         logger.info("Index path: %s", index_path)
         retriever.index.deserialize(index_path)
     else:
         logger.info("Reading all passages data from files: %s", input_paths)
         retriever.index_encoded_data(
-            input_paths, index_buffer_sz, path_id_prefixes=path_id_prefixes
+            input_paths, 
+            index_buffer_sz, 
+            path_id_prefixes=path_id_prefixes,
         )
         if index_path:
             retriever.index.serialize(index_path)
+    
 
-    # get top k results
-    print("get_top_docs: Starting.")
-    top_ids_and_scores = retriever.get_top_docs(questions_tensor.numpy(), cfg.n_docs)
-    print("get_top_docs: Done.")
+    ###########################################################################
+    # Get top k results.
+    ###########################################################################
+    
+    logger.info("Using special token %s", qa_src.special_query_token)
+    questions_tensor = retriever.generate_question_vectors(
+        questions, 
+        query_token=qa_src.special_query_token,
+    )
+
+    rich.print(
+        f"[bold]get_top_docs: Starting. Approx 7 min. {timestamp()}"
+    )
+    top_ids_and_scores = retriever.get_top_docs(
+        questions_tensor.numpy(), 
+        cfg.n_docs,
+    )
+    rich.print("[bold green]get_top_docs: Done.")
 
     # we no longer need the index
     retriever = None
-
-    all_passages = {}
-    for ctx_src in ctx_sources:
-        ctx_src.load_data_to(all_passages)
 
     if len(all_passages) == 0:
         raise RuntimeError(
             "No passages data found. Please specify ctx_file param properly."
         )
 
+
+    ###########################################################################
+    # Validate the results.
+    ###########################################################################
     if cfg.validate_as_tables:
         questions_doc_hits = validate_tables(
             all_passages,
@@ -457,12 +601,17 @@ def main(cfg: DictConfig):
 
     if cfg.kilt_out_file:
         kilt_ctx = next(
-            iter([ctx for ctx in ctx_sources if isinstance(ctx, KiltCsvCtxSrc)]), None
+            iter([ctx for ctx in ctx_sources 
+                  if isinstance(ctx, KiltCsvCtxSrc)]), None
         )
         if not kilt_ctx:
             raise RuntimeError("No Kilt compatible context file provided")
         assert hasattr(cfg, "kilt_out_file")
-        kilt_ctx.convert_to_kilt(qa_src.kilt_gold_file, cfg.out_file, cfg.kilt_out_file)
+        kilt_ctx.convert_to_kilt(
+            qa_src.kilt_gold_file, 
+            cfg.out_file, 
+            cfg.kilt_out_file,
+        )
 
 
 if __name__ == "__main__":
