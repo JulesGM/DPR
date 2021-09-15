@@ -15,6 +15,10 @@ indexers:
       schema:
         _target_: 
           type: string
+    gpu_flat:
+      schema:
+        _target_: 
+          type: string
 
     hnsw:
       schema:

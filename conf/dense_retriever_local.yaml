@@ -18,8 +18,7 @@ indexers:
   hnsw_sq:
     _target_: "dpr.indexer.faiss_indexers.DenseHNSWSQIndexer"
 
-  gpu_flat:
-    _target_: "dpr.indexer.faiss_indexers.GPUDenseFlatIndexer"
+
 
 out_file: 
 validation_workers: 15
@@ -34,8 +33,9 @@ ctx_datatsets: ["dpr_wiki"]
 
 # Glob paths to encoded passages 
 # (from generate_dense_embeddings tool)
+
 encoded_ctx_files: [
-  "/home/mila/g/gagnonju/DPR/downloads/data/wikipedia_split/psgs_w100.tsv"
+  "/Users/jules/Documents/Work/DecodingRetriever/mila/DPR/downloads/data/wikipedia_split/psgs_w100.tsv"
 ]
 match: "string"  # "regex" or "string"
 n_docs: 100
@@ -57,13 +57,13 @@ encoder_path:
 # files prefix name if there is no index at the specific 
 # location, the index will be created from encoded_ctx_files
 index_path: 
- "/home/mila/g/gagnonju/DPR/dpr/downloads/indexes/single/nq/full"
+ "/Users/jules/Documents/Work/DecodingRetriever/mila/DPR/dpr/downloads/indexes/single/nq/full"
 
 kilt_out_file:
 
 # A trained bi-encoder checkpoint file to initialize the model
 model_file: 
- "/home/mila/g/gagnonju/DPR/dpr/downloads/checkpoint/retriever/single/nq/bert-base-encoder.cp"
+ "/Users/jules/Documents/Work/DecodingRetriever/mila/DPR/dpr/downloads/checkpoint/retriever/single/nq/bert-base-encoder.cp"
 
 validate_as_tables: False
 rpc_retriever_cfg_file:

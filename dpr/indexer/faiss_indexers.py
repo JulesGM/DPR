@@ -252,3 +252,24 @@ class DenseHNSWSQIndexer(DenseHNSWFlatIndexer):
 
     def get_index_name(self):
         return "hnswsq_index"
+
+
+class GPUDenseFlatIndexer(DenseFlatIndexer):
+    def init_index(self, vector_sz: int):
+        pass     
+        # self.index = faiss.GpuIndexFlatIP(self._gpu_resources[0], vector_sz)
+
+    def serialize(self, file: str):
+        assert False
+
+
+    def deserialize(self, path: str):
+        logger.info("Loading index from %s", path)
+        index_file, meta_file = self.get_files(path)
+
+        cpu_index = faiss.read_index(index_file)
+        logger.info(
+            "Loaded index of type %s and size %d", type(cpu_index), cpu_index.ntotal
+        )
+        self.index = faiss.index_cpu_to_all_gpus(cpu_index)
+        logger.info("Converted the index to GPU.")
