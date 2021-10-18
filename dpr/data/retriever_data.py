@@ -259,6 +259,8 @@ class CsvCtxSrc(RetrieverData):
     def load_data_to(self, ctxs: Dict[object, BiEncoderPassage]):
         super().load_data()
 
+        logger.info("Started load_data_to.CsvCtxSrc")
+        
         if os.path.split(self.file)[-1] != "psgs_w100.tsv":
             print("Counting lines...")
             num_lines = int(subprocess.check_output(["wc", "-l", self.file])
@@ -284,6 +286,7 @@ class CsvCtxSrc(RetrieverData):
                     passage, 
                     row[self.title_col]
                 )
+        logger.info("Done with load_data_to.CsvCtxSrc")
 
 
 class KiltCsvCtxSrc(CsvCtxSrc):

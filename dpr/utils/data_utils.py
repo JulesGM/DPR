@@ -19,7 +19,7 @@ import torch
 from torch import Tensor as T
 from typing import List, Iterator, Callable, Tuple
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def read_serialized_data_from_files(paths: List[str]) -> List:

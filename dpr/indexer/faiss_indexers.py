@@ -17,7 +17,7 @@ import pickle
 
 from typing import List, Tuple
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 class DenseIndexer(object):

@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from dpr.utils.data_utils import Tensorizer, read_serialized_data_from_files
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 class ReaderPassage(object):

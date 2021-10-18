@@ -36,12 +36,13 @@ from torch import Tensor as T
 from torch import nn
 
 
+
 ###############################################################################
-# Internal imports 
+# Internal imports
 ###############################################################################
 from dpr.data.biencoder_data import RepTokenSelector
 from dpr.data.qa_validation import (
-    calculate_matches, 
+    calculate_matches,
     calculate_chunked_matches,
 )
 from dpr.data.retriever_data import KiltCsvCtxSrc, TableChunk
@@ -51,8 +52,8 @@ from dpr.indexer.faiss_indexers import (
 from dpr.models import init_biencoder_components
 from dpr.models.biencoder import BiEncoder, _select_span_with_token
 from dpr.options import (
-    setup_logger, 
-    setup_cfg_gpu, 
+    setup_logger,
+    setup_cfg_gpu,
     set_cfg_params_from_state,
 )
 from dpr.utils.data_utils import Tensorizer
@@ -66,16 +67,15 @@ import jules_validate_dense_retriever
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = os.path.join(
-    SCRIPT_DIR, 
+    SCRIPT_DIR,
     "conf/dense_retriever_schema.yaml",
 )
-
 
 ##############################################################################
 # Logging
 ##############################################################################
-logger = logging.getLogger()
-setup_logger(logger)
+logger = logging.getLogger(__name__)
+logger.info("(Re)loaded `dense_retriever.py`")
 
 def timestamp():
     now = datetime.datetime.now()
@@ -147,7 +147,7 @@ def generate_question_vectors(
                 logger.info("Encoded queries %d", len(query_vectors))
 
     query_tensor = torch.cat(query_vectors, dim=0)
-    logger.info("Total encoded queries tensor %s", query_tensor.size())
+    logger.debug("Total encoded queries tensor %s", query_tensor.size())
     assert query_tensor.size(0) == len(questions)
     return query_tensor
 
@@ -238,7 +238,7 @@ class LocalFaissRetriever(DenseRetriever):
         """
         time0 = time.time()
         results = self.index.search_knn(query_vectors, top_docs)
-        logger.info("index search time: %f sec.", time.time() - time0)
+        logger.debug("index search time: %f sec.", time.time() - time0)
         # Jules: Modified to not nuke the index
         return results
 
@@ -615,4 +615,5 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
+    setup_logger(logger)
     main()

@@ -10,7 +10,7 @@ import spacy as spacy
 from typing import List, Dict
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 if logger.hasHandlers():
     logger.handlers.clear()

@@ -34,7 +34,7 @@ from dpr.utils.model_utils import (
     move_to_device,
 )
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 setup_logger(logger)
 
 

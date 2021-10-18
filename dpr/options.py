@@ -19,7 +19,7 @@ import torch
 
 from omegaconf import DictConfig
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 # TODO: to be merged with conf_utils.py
 
