@@ -102,6 +102,7 @@ def generate_question_vectors(
 
             if query_token:
                 # TODO: tmp workaround for EL, remove or revise
+                print("QUERY TENSORIZER")
                 if query_token == "[START_ENT]":
                     batch_token_tensors = [
                         _select_span_with_token(
@@ -128,7 +129,7 @@ def generate_question_vectors(
                     q_ids_batch, 
                     tensorizer,
                 )
-
+                print("BIENCODER")
                 _, out, _ = BiEncoder.get_representation(
                     question_encoder,
                     q_ids_batch,
@@ -140,6 +141,7 @@ def generate_question_vectors(
                 _, out, _ = question_encoder(
                     q_ids_batch, q_seg_batch, q_attn_mask
                 )
+
 
             query_vectors.extend(out.cpu().split(1, dim=0))
 

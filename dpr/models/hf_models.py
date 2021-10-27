@@ -4,28 +4,34 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
-
 """
 Encoder model wrappers based on HuggingFace code
 """
 
+print("(Re)/Loading hf_models.py", flush=True)
+
 import logging
+import threading
 from typing import Tuple
 
+
+print("hf_models.py: Third Party", flush=True)
 import torch
 from torch import Tensor as T
 from torch import nn
-from transformers.modeling_bert import BertConfig, BertModel
-from transformers.optimization import AdamW
-from transformers.tokenization_bert import BertTokenizer
-from transformers.tokenization_roberta import RobertaTokenizer
+import transformers
+print(transformers.__version__, flush=True)
 
+
+print("hf_models.py: First Party", flush=True)
 from dpr.models.biencoder import BiEncoder
 from dpr.utils.data_utils import Tensorizer
 from .reader import Reader
 
-logger = logging.getLogger(__name__)
+print("hf_models.py:  Code", flush=True)
 
+logger = logging.getLogger(__name__)
+LOGGER = logger
 
 def get_bert_biencoder_components(cfg, inference_only: bool = False, **kwargs):
     dropout = cfg.encoder.dropout if hasattr(cfg.encoder, "dropout") else 0.0
@@ -164,26 +170,26 @@ def get_optimizer(
             "weight_decay": 0.0,
         },
     ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=adam_eps)
+    optimizer = transformers.AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=adam_eps)
     return optimizer
 
 
 def get_bert_tokenizer(pretrained_cfg_name: str, do_lower_case: bool = True):
-    return BertTokenizer.from_pretrained(
+    return transformers.BertTokenizer.from_pretrained(
         pretrained_cfg_name, do_lower_case=do_lower_case
     )
 
 
 def get_roberta_tokenizer(pretrained_cfg_name: str, do_lower_case: bool = True):
     # still uses HF code for tokenizer since they are the same
-    return RobertaTokenizer.from_pretrained(
+    return transformers.RobertaTokenizer.from_pretrained(
         pretrained_cfg_name, do_lower_case=do_lower_case
     )
 
 
-class HFBertEncoder(BertModel):
+class HFBertEncoder(transformers.BertModel):
     def __init__(self, config, project_dim: int = 0):
-        BertModel.__init__(self, config)
+        transformers.BertModel.__init__(self, config)
         assert config.hidden_size > 0, "Encoder hidden_size can't be zero"
         self.encode_proj = (
             nn.Linear(config.hidden_size, project_dim) if project_dim != 0 else None
@@ -198,8 +204,8 @@ class HFBertEncoder(BertModel):
         dropout: float = 0.1,
         pretrained: bool = True,
         **kwargs
-    ) -> BertModel:
-        cfg = BertConfig.from_pretrained(cfg_name if cfg_name else "bert-base-uncased")
+    ) -> transformers.BertModel:
+        cfg = transformers.BertConfig.from_pretrained(cfg_name if cfg_name else "bert-base-uncased")
         if dropout != 0:
             cfg.attention_probs_dropout_prob = dropout
             cfg.hidden_dropout_prob = dropout
@@ -218,19 +224,35 @@ class HFBertEncoder(BertModel):
         attention_mask: T,
         representation_token_pos=0,
     ) -> Tuple[T, ...]:
+
+
+        
         if self.config.output_hidden_states:
+            # If the model outputs hidden states ...
+            assert int(transformers.__version__.split(".")[0]) < 4, transformers.__version__
             sequence_output, pooled_output, hidden_states = super().forward(
                 input_ids=input_ids,
                 token_type_ids=token_type_ids,
                 attention_mask=attention_mask,
             )
         else:
+            # Otherwise:
             hidden_states = None
-            sequence_output, pooled_output = super().forward(
-                input_ids=input_ids,
-                token_type_ids=token_type_ids,
-                attention_mask=attention_mask,
-            )
+            if int(transformers.__version__.split(".")[0]) >= 4:
+                output = super().forward(
+                    input_ids=input_ids,
+                    token_type_ids=token_type_ids,
+                    attention_mask=attention_mask,
+                    return_dict=True,
+                )
+                sequence_output = output["last_hidden_state"]
+                pooled_output = output["pooler_output"]
+            else:
+                sequence_output, pooled_output = super().forward(
+                    input_ids=input_ids,
+                    token_type_ids=token_type_ids,
+                    attention_mask=attention_mask,
+                )
 
         if isinstance(representation_token_pos, int):
             pooled_output = sequence_output[:, representation_token_pos, :]
@@ -241,6 +263,7 @@ class HFBertEncoder(BertModel):
             ), "query bsz={} while representation_token_pos bsz={}".format(
                 bsz, representation_token_pos.size(0)
             )
+
             pooled_output = torch.stack(
                 [
                     sequence_output[i, representation_token_pos[i, 1], :]
@@ -248,8 +271,13 @@ class HFBertEncoder(BertModel):
                 ]
             )
 
+
         if self.encode_proj:
+            
             pooled_output = self.encode_proj(pooled_output)
+
+        assert isinstance(pooled_output, torch.Tensor), type(sequence_output).mro()
+
         return sequence_output, pooled_output, hidden_states
 
     def get_out_size(self):
@@ -260,7 +288,7 @@ class HFBertEncoder(BertModel):
 
 class BertTensorizer(Tensorizer):
     def __init__(
-        self, tokenizer: BertTokenizer, max_length: int, pad_to_max: bool = True
+        self, tokenizer: transformers.BertTokenizer, max_length: int, pad_to_max: bool = True
     ):
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -273,8 +301,10 @@ class BertTensorizer(Tensorizer):
         add_special_tokens: bool = True,
         apply_max_len: bool = True,
     ):
+
         text = text.strip()
-        # tokenizer automatic padding is explicitly disabled since its inconsistent behavior
+        # tokenizer automatic padding is explicitly disabled 
+        # since its inconsistent behavior
         # TODO: move max len to methods params?
 
         if title:
@@ -334,3 +364,5 @@ class RobertaTensorizer(BertTensorizer):
         super(RobertaTensorizer, self).__init__(
             tokenizer, max_length, pad_to_max=pad_to_max
         )
+
+print("hf_model.py: Done.")
