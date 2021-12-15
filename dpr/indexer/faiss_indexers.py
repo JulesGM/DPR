@@ -6,7 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 """
- FAISS-based index components for dense retriever
+FAISS-based index components for dense retriever
 """
 
 import faiss
@@ -29,7 +29,9 @@ class DenseIndexer(object):
     def init_index(self, vector_sz: int):
         raise NotImplementedError
 
-    def index_data(self, data: List[Tuple[object, np.array]]):
+    def index_data(
+        self, data: List[Tuple[object, np.array]]
+    ):
         raise NotImplementedError
 
     def get_index_name(self):
@@ -113,13 +115,19 @@ class DenseFlatIndexer(DenseIndexer):
     def search_knn(
         self, query_vectors: np.array, top_docs: int
     ) -> List[Tuple[List[object], List[float]]]:
+        assert self.index_id_to_db_id, "index_id_to_db_id not initialized"
+
         scores, indexes = self.index.search(query_vectors, top_docs)
         # convert to external ids
-        db_ids = [
-            [self.index_id_to_db_id[i] for i in query_top_idxs]
-            for query_top_idxs in indexes
-        ]
-        result = [(db_ids[i], scores[i]) for i in range(len(db_ids))]
+        try:
+            db_ids = [
+                [self.index_id_to_db_id[i] for i in query_top_idxs]
+                for query_top_idxs in indexes
+            ]
+            result = [(db_ids[i], scores[i]) for i in range(len(db_ids))]
+        except Exception as err:
+            raise err
+
         return result
 
     def get_index_name(self):

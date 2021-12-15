@@ -87,23 +87,14 @@ def calculate_matches(
         check_answer, match_type=match_type, tokenizer=tokenizer
     )
 
-    print("NO PARALLELISM" * 1000)
     questions_answers_docs = zip(answers, closest_docs)
-    rich.print("[red bold]REMEMBER TO RESTORE MULTIPROCESSING")
     cosmetic_len = min(len(answers), len(closest_docs))
 
-    processes = None
-    if PARALLELISM:
-        processes = ProcessPool(processes=workers_num)
-        scores = processes.map(
-            get_score_partial, 
-            questions_answers_docs,
-        )
-    else:
-        scores = list(tqdm.tqdm(
-            map(get_score_partial, questions_answers_docs),
-            total=cosmetic_len
-        ))
+    processes = ProcessPool(processes=workers_num)
+    scores = processes.map(
+        get_score_partial, 
+        questions_answers_docs,
+    )
 
     logger.info("Per question validation results len=%d", cosmetic_len)
     

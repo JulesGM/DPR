@@ -239,6 +239,9 @@ class TTS_ASR_QASrc(QASrc):
         self.data = data
 
 
+def _count_lines(file):
+    return int(subprocess.check_output(["wc", "-l", file]).split()[0])
+
 class CsvCtxSrc(RetrieverData):
     def __init__(
         self,
@@ -269,9 +272,17 @@ class CsvCtxSrc(RetrieverData):
         else:
             num_lines = 21015324        
 
+        print("Counting lines")
+        checked_num_lines = _count_lines(self.file)
+        print(f"Done counting lines: {checked_num_lines = }")
+
+        assert (num_lines == checked_num_lines - 1), (num_lines, checked_num_lines)
+
         with open(self.file) as ifile:
-            reader = csv.reader(ifile, delimiter="\t")
-            for row in tqdm.tqdm(reader, total=num_lines):
+            reader = list(tqdm.tqdm(csv.reader(ifile, delimiter="\t"), total=num_lines))
+
+            for i, row in enumerate(reader):
+                # Detect the header
                 if row[self.id_col] == "id":
                     continue
                 if self.id_prefix:
@@ -282,10 +293,15 @@ class CsvCtxSrc(RetrieverData):
                 passage = row[self.text_col]
                 if self.normalize:
                     passage = normalize_passage(passage)
-                ctxs[sample_id] = BiEncoderPassage(
-                    passage, 
-                    row[self.title_col]
-                )
+                try:
+                    ctxs[sample_id] = BiEncoderPassage(
+                        passage, 
+                        row[self.title_col]
+                    )
+                except Exception as err:
+                    err.args += (f"{row = }", f"{ifile = }", f"{reader[i - 1] = }")
+                    raise err
+
         logger.info("Done with load_data_to.CsvCtxSrc")
 
 

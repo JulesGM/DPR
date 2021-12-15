@@ -14,11 +14,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 if logger.hasHandlers():
     logger.handlers.clear()
-
 log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 console = logging.StreamHandler()
 console.setFormatter(log_formatter)
-
 logger.addHandler(console)
 
 

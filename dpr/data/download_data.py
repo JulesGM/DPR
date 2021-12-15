@@ -484,6 +484,7 @@ def download(resource_key: str, out_dir: str = None):
 
     save_root_dir = None
     data_files = []
+
     if isinstance(s3_url, list):
         for i, url in enumerate(s3_url):
             save_root_dir, local_file = download_resource(

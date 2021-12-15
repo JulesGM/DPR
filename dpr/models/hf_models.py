@@ -15,20 +15,16 @@ import threading
 from typing import Tuple
 
 
-print("hf_models.py: Third Party", flush=True)
 import torch
 from torch import Tensor as T
 from torch import nn
 import transformers
-print(transformers.__version__, flush=True)
 
 
-print("hf_models.py: First Party", flush=True)
 from dpr.models.biencoder import BiEncoder
 from dpr.utils.data_utils import Tensorizer
 from .reader import Reader
 
-print("hf_models.py:  Code", flush=True)
 
 logger = logging.getLogger(__name__)
 LOGGER = logger

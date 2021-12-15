@@ -18,23 +18,25 @@ import logging
 import os
 from pathlib import Path
 import pickle
-import rich
+import shutil
 import time
-from typing import List, Tuple, Dict, Iterator
+from typing import *
+from typing import IO  # Whyy
 
 
 ###############################################################################
 # Third party imports
 ###############################################################################
+import beartype
 import colored_traceback.auto
-import rich
 import hydra
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
+import rich
 import torch
 from torch import Tensor as T
 from torch import nn
-
+import transformers
 
 
 ###############################################################################
@@ -75,6 +77,7 @@ SCHEMA_PATH = os.path.join(
 # Logging
 ##############################################################################
 logger = logging.getLogger(__name__)
+LOGGER = logger
 logger.info("(Re)loaded `dense_retriever.py`")
 
 def timestamp():
@@ -126,7 +129,7 @@ def generate_question_vectors(
 
             if selector:
                 rep_positions = selector.get_positions(
-                    q_ids_batch, 
+                    q_ids_batch,
                     tensorizer,
                 )
                 print("BIENCODER")
@@ -159,9 +162,9 @@ def generate_question_vectors(
 ##############################################################################
 class DenseRetriever(object):
     def __init__(
-        self, 
-        question_encoder: nn.Module, 
-        batch_size: int, 
+        self,
+        question_encoder: nn.Module,
+        batch_size: int,
         tensorizer: Tensorizer
     ):
         self.question_encoder = question_encoder
@@ -245,31 +248,6 @@ class LocalFaissRetriever(DenseRetriever):
         return results
 
 
-def validate(
-    passages: Dict[object, Tuple[str, str]],
-    answers: List[List[str]],
-    result_ctx_ids: List[Tuple[List[object], List[float]]],
-    workers_num: int,
-    match_type: str,
-) -> List[List[bool]]:
-    
-    match_stats = calculate_matches(
-        passages, answers, result_ctx_ids, workers_num, match_type
-    )
-    top_k_hits = match_stats.top_k_hits
-
-    logger.info(
-        "Validation results: top k documents hits %s", 
-        top_k_hits,
-    )
-    top_k_hits = [v / len(result_ctx_ids) for v in top_k_hits]
-    logger.info(
-        "Validation results: top k documents hits accuracy %s", 
-        top_k_hits,
-    )
-    return match_stats.questions_doc_hits
-
-
 def save_results(
     passages: Dict[object, Tuple[str, str]],
     questions: List[str],
@@ -329,38 +307,53 @@ def iterate_encoded_files(
                 yield doc
 
 
+def validate(
+    passages: Dict[object, Tuple[str, str]],
+    answers: List[List[str]],
+    result_ctx_ids: List[Tuple[List[object], List[float]]],
+    workers_num: int,
+    match_type: str,
+    output_file: IO,
+) -> List[List[bool]]:
+    def tee(text):
+        logger.info(text)
+        output_file.write(text + "\n")
+
+    match_stats = calculate_matches(
+        passages, answers, result_ctx_ids, workers_num, match_type
+    )
+    top_k_hits = match_stats.top_k_hits
+    tee(f"Validation results: top k documents hits {top_k_hits}")
+    top_k_hits = [v / len(result_ctx_ids) for v in top_k_hits]
+    tee(f"Validation results: top k documents hits accuracy {top_k_hits}")
+    return top_k_hits
+
+
 def validate_tables(
     passages: Dict[object, TableChunk],
     answers: List[List[str]],
     result_ctx_ids: List[Tuple[List[object], List[float]]],
     workers_num: int,
     match_type: str,
+    output_file: IO, 
 ) -> List[List[bool]]:
+    def tee(text):
+        logger.info(text)
+        output_file.write(text + "\n")
+
     match_stats = calculate_chunked_matches(
         passages, answers, result_ctx_ids, workers_num, match_type
     )
     top_k_chunk_hits = match_stats.top_k_chunk_hits
     top_k_table_hits = match_stats.top_k_table_hits
 
-    logger.info(
-        "Validation results: top k documents hits %s", 
-        top_k_chunk_hits
-    )
+    tee(f"Validation results: top k documents hits {top_k_chunk_hits}")
+    output_file.writelines()
     top_k_hits = [v / len(result_ctx_ids) for v in top_k_chunk_hits]
-    logger.info(
-        "Validation results: top k table chunk hits accuracy %s", 
-        top_k_hits
-    )
-
-    logger.info(
-        "Validation results: top k tables hits %s", 
-        top_k_table_hits,
-    )
+    tee(f"Validation results: top k table chunk hits accuracy: {top_k_hits}")
+    tee(f"Validation results: top k tables hits: {top_k_table_hits}")
     top_k_table_hits = [v / len(result_ctx_ids) for v in top_k_table_hits]
-    logger.info(
-        "Validation results: top k tables accuracy %s", 
-        top_k_table_hits,
-    )
+    logger.info(f"Validation results: top k tables accuracy {top_k_table_hits}")
 
     return match_stats.top_k_chunk_hits
 
@@ -368,21 +361,29 @@ def validate_tables(
 @hydra.main(config_path="conf", config_name="dense_retriever")
 def main(cfg: DictConfig):
     rich.print("[bold green]Starting dense_retriever.main")
-    
+    logger.info(f"{transformers.__version__ = }")
+
     ###########################################################################
     # Complete and validate CFG
     ###########################################################################
+
     jules_validate_dense_retriever.validate(
-        {k: getattr(cfg, k) for k in dir(cfg)}, 
+        OmegaConf.to_container(cfg),
         SCHEMA_PATH,
     )
-    cfg = setup_cfg_gpu(cfg)
 
     assert cfg.out_file, cfg.out_file
     assert Path(cfg.out_file).parent.exists(), cfg.out_file
+    assert not Path(cfg.out_file).exists(), f"Must not exists: {cfg.out_file}"
 
+    cfg = setup_cfg_gpu(cfg)
     logger.info("CFG (after gpu  configuration):")
     logger.info("%s", OmegaConf.to_yaml(cfg))
+    os.mkdir(Path(cfg.out_file))
+    with open(Path(cfg.out_file) / "config.json", "w") as fout:
+        dict_ = OmegaConf.to_container(cfg)
+        dict_["transformer_version"] = transformers.__version__
+        json.dump(dict_, fout, default=str, indent=4)
 
     ###########################################################################
     # Prepare sources
@@ -394,7 +395,7 @@ def main(cfg: DictConfig):
         ctx_src = hydra.utils.instantiate(cfg.ctx_sources[ctx_src])
         id_prefixes.append(ctx_src.id_prefix)
         ctx_sources.append(ctx_src)
-    
+
     rich.print(ctx_sources)
     rich.print("[red bold]Second part.")
     all_passages = {}
@@ -402,7 +403,6 @@ def main(cfg: DictConfig):
         ctx_src.load_data_to(all_passages)
         rich.print("[green]Done loading passages.")
     print(len(all_passages))
-    
 
     ###########################################################################
     # Prepare models
@@ -423,11 +423,11 @@ def main(cfg: DictConfig):
         encoder = encoder.question_model
 
     encoder, _ = setup_for_distributed_mode(
-        encoder, 
-        None, 
-        cfg.device, 
-        cfg.n_gpu, 
-        cfg.local_rank, 
+        encoder,
+        None,
+        cfg.device,
+        cfg.n_gpu,
+        cfg.local_rank,
         cfg.fp16
     )
     encoder.eval()
@@ -461,7 +461,6 @@ def main(cfg: DictConfig):
         logger.warning("Please specify qa_dataset to use")
         return
 
-    
     ds_key = cfg.qa_dataset
     logger.info("qa_dataset: %s", ds_key)
 
@@ -485,9 +484,9 @@ def main(cfg: DictConfig):
     index_buffer_sz = index.buffer_size
     index.init_index(vector_size)
     retriever = LocalFaissRetriever(
-        encoder, 
-        cfg.batch_size, 
-        tensorizer, 
+        encoder,
+        cfg.batch_size,
+        tensorizer,
         index,
     )
 
@@ -508,7 +507,7 @@ def main(cfg: DictConfig):
         assert len(ctx_files_patterns) == len(
             id_prefixes
         ), "ctx len={} pref leb={}".format(
-            len(ctx_files_patterns), 
+            len(ctx_files_patterns),
             len(id_prefixes),
         )
     else:
@@ -535,21 +534,21 @@ def main(cfg: DictConfig):
     else:
         logger.info("Reading all passages data from files: %s", input_paths)
         retriever.index_encoded_data(
-            input_paths, 
-            index_buffer_sz, 
+            input_paths,
+            index_buffer_sz,
             path_id_prefixes=path_id_prefixes,
         )
         if index_path:
             retriever.index.serialize(index_path)
-    
+
 
     ###########################################################################
     # Get top k results.
     ###########################################################################
-    
+
     logger.info("Using special token %s", qa_src.special_query_token)
     questions_tensor = retriever.generate_question_vectors(
-        questions, 
+        questions,
         query_token=qa_src.special_query_token,
     )
 
@@ -557,7 +556,7 @@ def main(cfg: DictConfig):
         f"[bold]get_top_docs: Starting. Approx 7 min. {timestamp()}"
     )
     top_ids_and_scores = retriever.get_top_docs(
-        questions_tensor.numpy(), 
+        questions_tensor.numpy(),
         cfg.n_docs,
     )
     rich.print("[bold green]get_top_docs: Done.")
@@ -574,32 +573,36 @@ def main(cfg: DictConfig):
     ###########################################################################
     # Validate the results.
     ###########################################################################
-    if cfg.validate_as_tables:
-        questions_doc_hits = validate_tables(
-            all_passages,
-            question_answers,
-            top_ids_and_scores,
-            cfg.validation_workers,
-            cfg.match,
-        )
-    else:
+
+
+    # with open(Path(cfg.out_file) / "validate_tables.txt", "w") as output_file:
+    #     questions_doc_hits = validate_tables(
+    #         all_passages,
+    #         question_answers,
+    #         top_ids_and_scores,
+    #         cfg.validation_workers,
+    #         cfg.match,
+    #         output_file=output_file,
+    #     )
+
+    with open(Path(cfg.out_file) / "validate.txt", "w") as output_file:
         questions_doc_hits = validate(
             all_passages,
             question_answers,
             top_ids_and_scores,
             cfg.validation_workers,
             cfg.match,
+            output_file=output_file,
         )
 
-    if cfg.out_file:
-        save_results(
-            all_passages,
-            questions,
-            question_answers,
-            top_ids_and_scores,
-            questions_doc_hits,
-            cfg.out_file,
-        )
+    save_results(
+        all_passages,
+        questions,
+        question_answers,
+        top_ids_and_scores,
+        questions_doc_hits,
+        Path(cfg.out_file) / "retrievals.json",
+    )
 
     if cfg.kilt_out_file:
         kilt_ctx = next(
@@ -610,8 +613,8 @@ def main(cfg: DictConfig):
             raise RuntimeError("No Kilt compatible context file provided")
         assert hasattr(cfg, "kilt_out_file")
         kilt_ctx.convert_to_kilt(
-            qa_src.kilt_gold_file, 
-            cfg.out_file, 
+            qa_src.kilt_gold_file,
+            cfg.out_file,
             cfg.kilt_out_file,
         )
 
